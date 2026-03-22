@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PhishShield</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h2>PhishShield</h2>
+        <div class="card">
+            <div class="section">
+                <div class="header high" id="highHeader">
+                    🔴 High Risk (<span id="highCount">0</span>)
+                    <span class="arrow">▼</span>
+                </div>
+                <div id="highList" class="list"></div>
+            </div>
+
+            <div class="section">
+                <div class="header medium" id="mediumHeader">
+                    🟠 Medium Risk (<span id="mediumCount">0</span>)
+                    <span class="arrow">▼</span>
+                </div>
+                <div id="mediumList" class="list"></div>
+            </div>
+
+            <div class="section">
+                <div class="header safe" id="safeHeader">
+                    🟢 Safe (<span id="safeCount">0</span>)
+                    <span class="arrow">▼</span>
+                </div>
+                <div id="safeList" class="list"></div>
+            </div>
+        </div>
+    </div>
+    <script src="popup.js"></script>
+</body>
+</html>
