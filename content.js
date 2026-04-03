@@ -37,15 +37,29 @@ observer.observe(document.body, {
 // MAIN SCAN FUNCTION
 // =======================
 function scanLinks() {
-    // Only scan links within email content (Gmail's .a3s class for email bodies)
-    // If no .a3s found, fall back to all links but filter Gmail's own
-    let links;
-    const emailBodies = document.querySelectorAll(".a3s");
-    if (emailBodies.length > 0) {
-        links = document.querySelectorAll(".a3s a");
-    } else {
-        links = document.querySelectorAll("a[href^='http']");
+    // Gmail email body container is usually class .a3s.
+    // Only scan anchors inside currently open message bodies.
+    const emailBodies = document.querySelectorAll('.a3s');
+
+    // if no open email body, nothing to scan.
+    if (!emailBodies || emailBodies.length === 0) {
+        console.log('PhishShield: no open email message found, scan skipped.');
+
+        // Reset stats + link storage so popup reflects zero state
+        stats = { total: 0, high: 0, medium: 0, safe: 0 };
+        linkDetails = { high: [], medium: [], safe: [] };
+
+        chrome.storage.local.set({ stats, linkDetails }, () => {
+            console.log('PhishShield: reset stats because no message open.');
+        });
+
+        return;
     }
+
+    const links = [];
+    emailBodies.forEach(body => {
+        body.querySelectorAll('a').forEach(a => links.push(a));
+    });
 
     // Reset stats + link storage
     stats = {
@@ -61,21 +75,20 @@ function scanLinks() {
         safe: []
     };
 
-    const pageText = document.body.innerText.toLowerCase();
+    // Use email text, not full page text, for scoring.
+    const pageText = Array.from(emailBodies)
+        .map(body => body.innerText)
+        .join('\n')
+        .toLowerCase();
     const textScore = analyzeEmailText(pageText);
 
     links.forEach(link => {
         const url = link.href;
         const text = link.textContent.trim();
 
-        if (!url || !url.startsWith('http')) return;
+        if (!url) return;
 
         let score = analyzeURL(url);
-
-        // Skip Gmail's own links
-        if (url.includes('mail.google.com') || url.includes('googleusercontent.com')) {
-            score = 0;
-        }
 
         // Blacklist detection
         if (isBlacklisted(url)) {
@@ -98,11 +111,11 @@ function scanLinks() {
         if (score > 70) {
             stats.high++;
             linkDetails.high.push(url);
-        }
+        } 
         else if (score > 40) {
             stats.medium++;
             linkDetails.medium.push(url);
-        }
+        } 
         else {
             stats.safe++;
             linkDetails.safe.push(url);
@@ -117,82 +130,31 @@ function scanLinks() {
     });
 }
 
-    // Save BOTH stats + links
-    chrome.storage.local.set({ stats, linkDetails }, () => {
-        console.log("Stats + links updated:", stats);
-    });
-}
-
 // =======================
 // URL ANALYSIS
 // =======================
 function analyzeURL(url) {
     let score = 0;
 
-    try {
-        const urlObj = new URL(url);
-        const hostname = urlObj.hostname.toLowerCase();
-        const pathname = urlObj.pathname.toLowerCase();
-        const search = urlObj.search.toLowerCase();
+    if (url.length > 60) score += 20;
 
-        // Length checks
-        if (url.length > 100) score += 15;
-        if (hostname.length > 50) score += 10;
-
-        // Suspicious keywords in URL
-        const suspiciousKeywords = [
-            'login', 'verify', 'account', 'secure', 'update', 'confirm',
-            'password', 'bank', 'paypal', 'amazon', 'signin', 'auth',
-            'reset', 'billing', 'support', 'help', 'contact'
-        ];
-        suspiciousKeywords.forEach(keyword => {
-            if (hostname.includes(keyword) || pathname.includes(keyword) || search.includes(keyword)) {
-                score += 20;
-            }
-        });
-
-        // Suspicious TLDs
-        const suspiciousTlds = [
-            '.xyz', '.top', '.tk', '.ml', '.ga', '.cf', '.gq', '.icu',
-            '.work', '.click', '.link', '.online', '.site', '.space'
-        ];
-        if (suspiciousTlds.some(tld => hostname.endsWith(tld))) {
-            score += 30;
-        }
-
-        // IP addresses instead of domains
-        if (/^\d+\.\d+\.\d+\.\d+$/.test(hostname)) {
-            score += 50;
-        }
-
-        // URL shortening services
-        const shorteners = ['bit.ly', 'tinyurl.com', 'goo.gl', 't.co', 'ow.ly'];
-        if (shorteners.some(short => hostname.includes(short))) {
-            score += 25;
-        }
-
-        // HTTPS check (prefer HTTPS, but not mandatory)
-        if (urlObj.protocol !== 'https:') {
-            score += 10;
-        }
-
-        // Subdomain abuse
-        const parts = hostname.split('.');
-        if (parts.length > 3) {
-            score += 15;
-        }
-
-        // Special characters in domain
-        if (/[^a-z0-9.-]/.test(hostname.replace(/\./g, ''))) {
-            score += 20;
-        }
-
-    } catch (e) {
-        // Invalid URL
-        score += 60;
+    if (
+        url.includes("login") ||
+        url.includes("verify") ||
+        url.includes("account")
+    ) {
+        score += 30;
     }
 
-    return Math.min(score, 100); // Cap at 100
+    if (
+        url.includes(".xyz") ||
+        url.includes(".top") ||
+        url.includes(".tk")
+    ) {
+        score += 40;
+    }
+
+    return score;
 }
 
 // =======================
@@ -202,27 +164,22 @@ function analyzeEmailText(text) {
     let score = 0;
 
     const keywords = [
-        "urgent", "verify", "suspended", "click now", "password",
-        "bank", "login", "account", "security", "alert", "warning",
-        "confirm", "update", "billing", "payment", "invoice",
-        "suspicious activity", "unauthorized", "reset", "support",
-        "help desk", "customer service", "immediate action",
-        "limited time", "expire", "deadline", "act now"
+        "urgent",
+        "verify",
+        "suspended",
+        "click now",
+        "password",
+        "bank",
+        "login"
     ];
 
     keywords.forEach(word => {
         if (text.includes(word)) {
-            score += 5; // Reduced from 10 to make it additive
+            score += 10;
         }
     });
 
-    // Check for multiple urgent words
-    const urgentCount = keywords.filter(word => text.includes(word)).length;
-    if (urgentCount > 3) {
-        score += 20;
-    }
-
-    return Math.min(score, 30); // Cap email text score
+    return score;
 }
 
 // =======================
@@ -233,33 +190,13 @@ function isHiddenLink(text, url) {
 
     const cleanedText = text.toLowerCase().trim();
 
-    // Skip if text is too long (likely descriptive)
-    if (cleanedText.length > 30) return false;
+    if (cleanedText.length > 25) return false;
 
-    // Safe words that indicate legitimate short text
-    const safeWords = [
-        "click", "here", "open", "view", "read", "more", "link",
-        "website", "site", "page", "visit", "go to", "check"
-    ];
-    if (safeWords.some(word => cleanedText.includes(word))) return false;
+    const safeWords = ["click", "here", "open", "view"];
+    if (safeWords.includes(cleanedText)) return false;
 
-    // Check if text looks like a URL but doesn't match the href
-    if (cleanedText.includes('.com') || cleanedText.includes('.org') ||
-        cleanedText.includes('.net') || cleanedText.includes('http')) {
-        try {
-            const textDomain = cleanedText.match(/([a-z0-9-]+\.)+[a-z]{2,}/i);
-            const urlDomain = new URL(url).hostname;
-            if (textDomain && !urlDomain.includes(textDomain[0])) {
-                return true;
-            }
-        } catch (e) {
-            return true; // If URL parsing fails, consider suspicious
-        }
-    }
-
-    // Generic short text without safe words
-    if (cleanedText.length < 10 && !safeWords.some(word => cleanedText.includes(word))) {
-        return true;
+    if (cleanedText.includes(".com") || cleanedText.includes(".in")) {
+        return !url.includes(cleanedText);
     }
 
     return false;
