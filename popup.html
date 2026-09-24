@@ -7,33 +7,173 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="container">
-        <h2>PhishShield</h2>
-        <div class="card">
-            <div class="section">
-                <div class="header high" id="highHeader">
-                    🔴 High Risk (<span id="highCount">0</span>)
-                    <span class="arrow">▼</span>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="brand-area">
+                <div class="brand-logo" aria-hidden="true">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                        <path d="m9 12 2 2 4-4"/>
+                    </svg>
                 </div>
-                <div id="highList" class="list"></div>
+                <div class="brand-info">
+                    <div class="brand-row">
+                        <h1 class="brand-name">PhishShield</h1>
+                        <span class="version-badge">PRO</span>
+                    </div>
+                    <div class="brand-sub">Gmail Email Security</div>
+                </div>
             </div>
-
-            <div class="section">
-                <div class="header medium" id="mediumHeader">
-                    🟠 Medium Risk (<span id="mediumCount">0</span>)
-                    <span class="arrow">▼</span>
-                </div>
-                <div id="mediumList" class="list"></div>
+            <div class="status-indicator" title="PhishShield is actively monitoring open emails">
+                <span class="pulse-dot"></span>
+                <span class="status-text">Active</span>
             </div>
+        </header>
 
-            <div class="section">
-                <div class="header safe" id="safeHeader">
-                    🟢 Safe (<span id="safeCount">0</span>)
-                    <span class="arrow">▼</span>
-                </div>
-                <div id="safeList" class="list"></div>
+        <!-- Context Banner -->
+        <div class="context-banner">
+            <div class="context-item">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <rect width="20" height="16" x="2" y="4" rx="2"/>
+                    <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
+                </svg>
+                <span id="scopeLabel">Active Message Analysis</span>
+            </div>
+            <span class="engine-badge" id="engineStatus">Real-time</span>
+        </div>
+
+        <!-- Metric Summary Grid -->
+        <section class="metrics-grid" aria-label="Scan Statistics">
+            <div class="metric-card metric-total">
+                <span class="metric-label">SCANNED</span>
+                <span class="metric-value" id="totalCount">0</span>
+            </div>
+            <div class="metric-card metric-high">
+                <span class="metric-label">HIGH RISK</span>
+                <span class="metric-value" id="highCount">0</span>
+            </div>
+            <div class="metric-card metric-medium">
+                <span class="metric-label">MEDIUM</span>
+                <span class="metric-value" id="mediumCount">0</span>
+            </div>
+            <div class="metric-card metric-safe">
+                <span class="metric-label">SAFE</span>
+                <span class="metric-value" id="safeCount">0</span>
+            </div>
+        </section>
+
+        <!-- Risk Distribution Bar -->
+        <div class="distribution-wrapper" aria-label="Risk Distribution">
+            <div class="distribution-header">
+                <span class="distribution-title">THREAT SPECTRUM</span>
+                <span class="distribution-ratio" id="distributionRatio">0 links</span>
+            </div>
+            <div class="distribution-bar" id="distributionBar">
+                <div class="segment segment-high" id="barHigh" style="width: 0%;" title="High Risk"></div>
+                <div class="segment segment-medium" id="barMedium" style="width: 0%;" title="Medium Risk"></div>
+                <div class="segment segment-safe" id="barSafe" style="width: 0%;" title="Safe"></div>
+                <div class="segment segment-empty" id="barEmpty" style="width: 100%;" title="No Links"></div>
             </div>
         </div>
+
+        <!-- Global Empty/Info State (Shown when 0 total links) -->
+        <div class="global-empty" id="globalEmpty" style="display: none;">
+            <div class="empty-icon" aria-hidden="true">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="m16 12-4-4-4 4"/>
+                    <path d="M12 16V8"/>
+                </svg>
+            </div>
+            <div class="empty-title">No Links in Current View</div>
+            <div class="empty-desc">Open an email in Gmail to inspect link security and detect phishing threats.</div>
+        </div>
+
+        <!-- Threat Categories Accordion -->
+        <main class="threat-sections" id="threatSections">
+            <!-- High Risk Section -->
+            <section class="category-panel panel-high">
+                <button type="button" class="category-header" id="highHeader" aria-expanded="false" aria-controls="highList">
+                    <div class="cat-left">
+                        <span class="cat-icon icon-high" aria-hidden="true">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>
+                                <line x1="12" y1="9" x2="12" y2="13"/>
+                                <line x1="12" y1="17" x2="12.01" y2="17"/>
+                            </svg>
+                        </span>
+                        <span class="cat-title">High Risk Threats</span>
+                    </div>
+                    <div class="cat-right">
+                        <span class="cat-badge badge-high" id="highBadge">0</span>
+                        <svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                    </div>
+                </button>
+                <div id="highList" class="category-content" role="region" aria-labelledby="highHeader"></div>
+            </section>
+
+            <!-- Medium Risk Section -->
+            <section class="category-panel panel-medium">
+                <button type="button" class="category-header" id="mediumHeader" aria-expanded="false" aria-controls="mediumList">
+                    <div class="cat-left">
+                        <span class="cat-icon icon-medium" aria-hidden="true">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="10"/>
+                                <line x1="12" y1="8" x2="12" y2="12"/>
+                                <line x1="12" y1="16" x2="12.01" y2="16"/>
+                            </svg>
+                        </span>
+                        <span class="cat-title">Suspicious / Medium Risk</span>
+                    </div>
+                    <div class="cat-right">
+                        <span class="cat-badge badge-medium" id="mediumBadge">0</span>
+                        <svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                    </div>
+                </button>
+                <div id="mediumList" class="category-content" role="region" aria-labelledby="mediumHeader"></div>
+            </section>
+
+            <!-- Safe Links Section -->
+            <section class="category-panel panel-safe">
+                <button type="button" class="category-header" id="safeHeader" aria-expanded="false" aria-controls="safeList">
+                    <div class="cat-left">
+                        <span class="cat-icon icon-safe" aria-hidden="true">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                                <path d="m9 12 2 2 4-4"/>
+                            </svg>
+                        </span>
+                        <span class="cat-title">Verified Safe Links</span>
+                    </div>
+                    <div class="cat-right">
+                        <span class="cat-badge badge-safe" id="safeBadge">0</span>
+                        <svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                    </div>
+                </button>
+                <div id="safeList" class="category-content" role="region" aria-labelledby="safeHeader"></div>
+            </section>
+        </main>
+
+        <!-- Footer / Notification Toast Container -->
+        <footer class="app-footer">
+            <div class="footer-status">
+                <span class="security-lock">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                    </svg>
+                </span>
+                <span>Protected by PhishShield Engine</span>
+            </div>
+            <div id="toastMessage" class="toast-message" aria-live="polite"></div>
+        </footer>
     </div>
     <script src="popup.js"></script>
 </body>

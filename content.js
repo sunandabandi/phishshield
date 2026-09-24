@@ -1,8 +1,10 @@
 console.log("PhishShield initialized");
 
-// =======================
-// GLOBAL STATE
-// =======================
+// State management
+let currentEmailFingerprint = null;
+let scanDebounceTimer = null;
+let isCurrentlyScanning = false;
+
 let stats = {
     total: 0,
     high: 0,
@@ -16,16 +18,12 @@ let linkDetails = {
     safe: []
 };
 
-// =======================
-// INITIAL RUN
-// =======================
-scanLinks();
+// Initial scan on load
+triggerScan();
 
-// =======================
-// REAL-TIME OBSERVER
-// =======================
+// Debounced MutationObserver to detect dynamic rendering in Gmail SPA
 const observer = new MutationObserver(() => {
-    scanLinks();
+    scheduleDebouncedScan();
 });
 
 observer.observe(document.body, {
@@ -33,106 +31,265 @@ observer.observe(document.body, {
     subtree: true
 });
 
-// =======================
-// MAIN SCAN FUNCTION
-// =======================
-function scanLinks() {
-    // Gmail email body container is usually class .a3s.
-    // Only scan anchors inside currently open message bodies.
-    const emailBodies = document.querySelectorAll('.a3s');
+// Listen for SPA navigation events
+window.addEventListener("hashchange", () => {
+    scheduleDebouncedScan(50);
+});
 
-    // if no open email body, nothing to scan.
-    if (!emailBodies || emailBodies.length === 0) {
-        console.log('PhishShield: no open email message found, scan skipped.');
+window.addEventListener("popstate", () => {
+    scheduleDebouncedScan(50);
+});
 
-        // Reset stats + link storage so popup reflects zero state
-        stats = { total: 0, high: 0, medium: 0, safe: 0 };
-        linkDetails = { high: [], medium: [], safe: [] };
+// Periodic lightweight sync check (every 1 second)
+setInterval(() => {
+    const containers = getOpenedEmailBodyContainers();
+    const newFingerprint = computeEmailFingerprint(containers);
+    if (newFingerprint !== currentEmailFingerprint) {
+        triggerScan();
+    }
+}, 1000);
 
-        chrome.storage.local.set({ stats, linkDetails }, () => {
-            console.log('PhishShield: reset stats because no message open.');
-        });
+function scheduleDebouncedScan(delay = 180) {
+    if (scanDebounceTimer) {
+        clearTimeout(scanDebounceTimer);
+    }
+    scanDebounceTimer = setTimeout(() => {
+        triggerScan();
+    }, delay);
+}
 
+/**
+ * Locates the actual email body DOM containers for the currently opened email message.
+ * Strictly searches for the message content area and ignores sidebars, toolbars, and list views.
+ */
+function getOpenedEmailBodyContainers() {
+    const mainArea = document.querySelector('div[role="main"]') || document.body;
+
+    // First verify if we are in a list view (Inbox/Spam/Sent message table list)
+    // In Gmail, list views have a table with role="grid" or class "F cf zt" without an open message view.
+    const isListView = mainArea.querySelector('table.F.cf.zt, table[role="grid"]') !== null &&
+                       mainArea.querySelector('.nH.hx, div.adn, .h7') === null;
+
+    // Check for message body elements (.a3s is Gmail's primary message body class)
+    const selectors = [
+        '.a3s.aiL',
+        '.a3s',
+        'div[aria-label="Message Body"]',
+        '.ii.gt .a3s',
+        'div.adn.ads .ii.gt'
+    ];
+
+    const elements = mainArea.querySelectorAll(selectors.join(', '));
+    const validContainers = [];
+
+    elements.forEach(el => {
+        // Must be visible and have actual layout dimensions
+        const isVisible = el.offsetParent !== null &&
+                          window.getComputedStyle(el).display !== 'none' &&
+                          window.getComputedStyle(el).visibility !== 'hidden';
+
+        if (isVisible) {
+            // Avoid duplicate nested parent/child selections
+            const isChild = validContainers.some(parent => parent.contains(el));
+            if (!isChild) {
+                // If el contains any existing container, replace parent with specific child
+                const existingChildIdx = validContainers.findIndex(c => el.contains(c));
+                if (existingChildIdx !== -1) {
+                    validContainers[existingChildIdx] = el;
+                } else {
+                    validContainers.push(el);
+                }
+            }
+        }
+    });
+
+    if (isListView && validContainers.length === 0) {
+        return [];
+    }
+
+    return validContainers;
+}
+
+/**
+ * Generates a unique fingerprint for the currently opened email based on URL hash and DOM metadata.
+ */
+function computeEmailFingerprint(containers) {
+    if (!containers || containers.length === 0) {
+        return null;
+    }
+
+    const hash = window.location.hash || "";
+    const mainArea = document.querySelector('div[role="main"]') || document.body;
+    const subjectEl = mainArea.querySelector('h2.hP, .hP, div[role="heading"]');
+    const subjectText = subjectEl ? subjectEl.textContent.trim() : "";
+
+    const containerIds = containers.map(c => c.id || c.className).join("-");
+    return `${hash}|${subjectText}|${containerIds}|${containers.length}`;
+}
+
+/**
+ * Main email scanner routine.
+ */
+function triggerScan() {
+    if (isCurrentlyScanning) return;
+
+    const emailContainers = getOpenedEmailBodyContainers();
+    const newFingerprint = computeEmailFingerprint(emailContainers);
+
+    // Case 1: No email is currently open
+    if (!emailContainers || emailContainers.length === 0 || !newFingerprint) {
+        if (currentEmailFingerprint !== null || stats.total !== 0) {
+            console.log("PhishShield: No email currently open");
+            currentEmailFingerprint = null;
+            resetStats();
+        }
         return;
     }
 
-    const links = [];
-    emailBodies.forEach(body => {
-        body.querySelectorAll('a').forEach(a => links.push(a));
+    isCurrentlyScanning = true;
+    currentEmailFingerprint = newFingerprint;
+
+    console.log("PhishShield: Current email detected");
+    console.log("PhishShield: Email body detected (Container count:", emailContainers.length, ")");
+    emailContainers.forEach((container, idx) => {
+        console.log(`PhishShield: Message container [${idx}]:`, container);
     });
 
-    // Reset stats + link storage
-    stats = {
+    // Extract links exclusively from inside the opened email body containers
+    const rawAnchors = [];
+    emailContainers.forEach(container => {
+        const anchors = container.querySelectorAll('a');
+        anchors.forEach(a => rawAnchors.push(a));
+    });
+
+    // Extract surrounding email text for contextual scoring
+    const pageText = emailContainers
+        .map(container => container.innerText || container.textContent || "")
+        .join("\n")
+        .toLowerCase();
+    const textScore = analyzeEmailText(pageText);
+
+    // Fresh statistics for the current email
+    const newStats = {
         total: 0,
         high: 0,
         medium: 0,
         safe: 0
     };
 
-    linkDetails = {
+    const newLinkDetails = {
         high: [],
         medium: [],
         safe: []
     };
 
-    // Use email text, not full page text, for scoring.
-    const pageText = Array.from(emailBodies)
-        .map(body => body.innerText)
-        .join('\n')
-        .toLowerCase();
-    const textScore = analyzeEmailText(pageText);
+    const detectedUrls = [];
 
-    links.forEach(link => {
-        const url = link.href;
-        const text = link.textContent.trim();
+    rawAnchors.forEach(link => {
+        const rawHref = link.getAttribute('href') || link.href;
+        if (!rawHref) return;
 
-        if (!url) return;
+        const resolvedUrl = unwrapGmailUrl(rawHref);
+        const text = (link.textContent || link.innerText || "").trim();
 
-        let score = analyzeURL(url);
+        if (!isValidWebUrl(resolvedUrl)) {
+            return;
+        }
 
-        // Blacklist detection
-        if (isBlacklisted(url)) {
+        console.log("PhishShield: Email link:", resolvedUrl);
+
+        // Run feature extraction
+        console.log(extractFeatures(resolvedUrl));
+
+        let score = analyzeURL(resolvedUrl);
+
+        if (isBlacklisted(resolvedUrl)) {
             score += 80;
-            console.log("BLACKLISTED:", url);
+            console.log("BLACKLISTED:", resolvedUrl);
         }
 
-        // Hidden link detection
-        if (isHiddenLink(text, url)) {
+        if (isHiddenLink(text, resolvedUrl)) {
             score += 40;
-            console.log("Hidden link detected:", url);
+            console.log("Hidden link detected:", resolvedUrl);
         }
 
-        // Email content scoring
         score += textScore;
 
-        // Update stats + store links
-        stats.total++;
+        newStats.total++;
+        detectedUrls.push(resolvedUrl);
 
         if (score > 70) {
-            stats.high++;
-            linkDetails.high.push(url);
-        } 
-        else if (score > 40) {
-            stats.medium++;
-            linkDetails.medium.push(url);
-        } 
-        else {
-            stats.safe++;
-            linkDetails.safe.push(url);
+            newStats.high++;
+            newLinkDetails.high.push(resolvedUrl);
+        } else if (score > 40) {
+            newStats.medium++;
+            newLinkDetails.medium.push(resolvedUrl);
+        } else {
+            newStats.safe++;
+            newLinkDetails.safe.push(resolvedUrl);
         }
 
-        applyRisk(link, url, score);
+        applyRisk(link, resolvedUrl, score);
     });
 
-    // Save BOTH stats + links
+    stats = newStats;
+    linkDetails = newLinkDetails;
+
+    console.log(`PhishShield: Found ${stats.total} links in current email`);
+
     chrome.storage.local.set({ stats, linkDetails }, () => {
-        console.log("Stats + links updated:", stats);
+        console.log("PhishShield: Current email results updated", stats);
+        isCurrentlyScanning = false;
     });
 }
 
-// =======================
-// URL ANALYSIS
-// =======================
+function resetStats() {
+    stats = { total: 0, high: 0, medium: 0, safe: 0 };
+    linkDetails = { high: [], medium: [], safe: [] };
+    chrome.storage.local.set({ stats, linkDetails }, () => {
+        console.log("PhishShield: Results cleared (no active email)");
+    });
+}
+
+/**
+ * Unwraps Google redirect URLs (https://www.google.com/url?q=...) to extract the genuine destination URL.
+ */
+function unwrapGmailUrl(rawUrl) {
+    if (!rawUrl) return "";
+
+    try {
+        const parsed = new URL(rawUrl, window.location.href);
+        if (parsed.hostname.includes("google.com") && parsed.pathname.startsWith("/url")) {
+            const actual = parsed.searchParams.get("q") || parsed.searchParams.get("url");
+            if (actual) {
+                return decodeURIComponent(actual);
+            }
+        }
+        return parsed.href;
+    } catch {
+        return rawUrl;
+    }
+}
+
+/**
+ * Filters out invalid / non-web destinations.
+ */
+function isValidWebUrl(url) {
+    if (!url || typeof url !== "string") return false;
+    const trimmed = url.trim();
+    if (trimmed === "" || trimmed === "#" || trimmed.startsWith("javascript:") ||
+        trimmed.startsWith("mailto:") || trimmed.startsWith("tel:") ||
+        trimmed.startsWith("about:") || trimmed.startsWith("blob:") ||
+        trimmed.startsWith("data:")) {
+        return false;
+    }
+    return trimmed.startsWith("http://") || trimmed.startsWith("https://");
+}
+
+// -------------------------------------------------------------
+// Existing Detection & Highlighting Logic (Strictly Preserved)
+// -------------------------------------------------------------
+
 function analyzeURL(url) {
     let score = 0;
 
@@ -157,9 +314,6 @@ function analyzeURL(url) {
     return score;
 }
 
-// =======================
-// EMAIL CONTENT ANALYSIS
-// =======================
 function analyzeEmailText(text) {
     let score = 0;
 
@@ -182,9 +336,6 @@ function analyzeEmailText(text) {
     return score;
 }
 
-// =======================
-// HIDDEN LINK DETECTION
-// =======================
 function isHiddenLink(text, url) {
     if (!text || !url) return false;
 
@@ -202,28 +353,34 @@ function isHiddenLink(text, url) {
     return false;
 }
 
-// =======================
-// APPLY RISK VISUALS
-// =======================
 function applyRisk(link, url, score) {
     if (score > 70) {
         console.log("HIGH RISK:", url);
         highlightLink(link, "red");
-    } 
+    }
     else if (score > 40) {
         console.log("MEDIUM RISK:", url);
         highlightLink(link, "orange");
-    } 
+    }
     else {
         console.log("SAFE:", url);
     }
 }
 
-// =======================
-// UI HIGHLIGHT FUNCTION
-// =======================
 function highlightLink(link, color) {
     link.style.border = `2px solid ${color}`;
     link.style.backgroundColor =
         color === "red" ? "#ffe6e6" : "#fff4e6";
+}
+
+function extractFeatures(url) {
+    return {
+        length: url.length,
+        hasLogin: url.includes("login") ? 1 : 0,
+        hasVerify: url.includes("verify") ? 1 : 0,
+        hasAccount: url.includes("account") ? 1 : 0,
+        dotCount: (url.match(/\./g) || []).length,
+        hasHttps: url.startsWith("https") ? 1 : 0,
+        hasSuspiciousTLD: (url.includes(".xyz") || url.includes(".top") || url.includes(".tk")) ? 1 : 0
+    };
 }
