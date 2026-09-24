@@ -198,8 +198,8 @@ function triggerScan() {
 
         console.log("PhishShield: Email link:", resolvedUrl);
 
-        // Run feature extraction
-        console.log(extractFeatures(resolvedUrl));
+        // Run feature extraction for future ML modeling
+        console.log("PhishShield: Extracted features:", extractFeatures(resolvedUrl));
 
         let score = analyzeURL(resolvedUrl);
 
@@ -373,14 +373,154 @@ function highlightLink(link, color) {
         color === "red" ? "#ffe6e6" : "#fff4e6";
 }
 
+/**
+ * Comprehensive Feature Extractor for URL Phishing Analysis & ML Modeling
+ * Extracts structural, lexical, and security indicators in numerical format (0/1 or counts).
+ * Uses safe URL parsing and handles malformed URLs without throwing runtime errors.
+ *
+ * @param {string} url - The target URL to extract features from
+ * @returns {Object} Numerical feature vector representation
+ */
 function extractFeatures(url) {
+    if (!url || typeof url !== "string") {
+        return {
+            length: 0,
+            urlLength: 0,
+            hostnameLength: 0,
+            pathLength: 0,
+            dotCount: 0,
+            digitCount: 0,
+            specialCharCount: 0,
+            hyphenCount: 0,
+            hasExcessiveHyphens: 0,
+            subdomainCount: 0,
+            hasHttps: 0,
+            isIpAddress: 0,
+            hasPort: 0,
+            hasSuspiciousPort: 0,
+            hasLogin: 0,
+            hasVerify: 0,
+            hasAccount: 0,
+            hasPassword: 0,
+            hasReset: 0,
+            hasSecure: 0,
+            keywordCount: 0,
+            hasAtSymbol: 0,
+            atCount: 0,
+            hasUrlEncoding: 0,
+            urlEncodingCount: 0,
+            hasSuspiciousTLD: 0
+        };
+    }
+
+    const lowerUrl = url.toLowerCase();
+
+    // Safe URL parsing using standard URL API with regex fallback
+    let hostname = "";
+    let pathname = "";
+    let port = "";
+    let protocol = "";
+
+    try {
+        const parsed = new URL(url);
+        hostname = parsed.hostname || "";
+        pathname = (parsed.pathname || "") + (parsed.search || "") + (parsed.hash || "");
+        port = parsed.port || "";
+        protocol = parsed.protocol || "";
+    } catch {
+        // Fallback parser for non-standard / relative / malformed URLs
+        const match = url.match(/^(?:([a-z0-9+.-]+):)?(?:\/\/(?:[^\/?#]*@)?([^\/?#:]+)(?::([0-9]+))?)?([^?#]*)?/i);
+        if (match) {
+            protocol = match[1] ? match[1] + ":" : "";
+            hostname = match[2] || "";
+            port = match[3] || "";
+            pathname = match[4] || "";
+        }
+    }
+
+    // 1. Length-based features
+    const urlLength = url.length;
+    const hostnameLength = hostname.length;
+    const pathLength = pathname.length;
+
+    // 2. Character counts
+    const dotCount = (url.match(/\./g) || []).length;
+    const digitCount = (url.match(/\d/g) || []).length;
+    const specialCharCount = (url.match(/[^a-zA-Z0-9]/g) || []).length;
+    const hyphenCount = (url.match(/-/g) || []).length;
+    const hasExcessiveHyphens = hyphenCount >= 3 ? 1 : 0;
+
+    // 3. Subdomain analysis & IP address detection
+    const isIpv4 = /^(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.(?:25[0-5]|2[0-4]\d|[01]?\d\d?)$/.test(hostname);
+    const isIpv6 = hostname.includes(":") && !hostname.includes(".");
+    const isIpAddress = (isIpv4 || isIpv6) ? 1 : 0;
+
+    let subdomainCount = 0;
+    if (hostname && !isIpAddress) {
+        const parts = hostname.split(".").filter(Boolean);
+        // Standard hostname like domain.com has 2 parts (0 subdomains).
+        // e.g. sub.domain.com has 3 parts (1 subdomain), a.b.domain.com has 4 parts (2 subdomains).
+        subdomainCount = Math.max(0, parts.length - 2);
+    }
+
+    // 4. Protocol & Port analysis
+    const hasHttps = (protocol === "https:" || lowerUrl.startsWith("https://")) ? 1 : 0;
+    const hasPort = port !== "" ? 1 : 0;
+    const hasSuspiciousPort = (port !== "" && port !== "80" && port !== "443") ? 1 : 0;
+
+    // 5. Phishing keyword presence (login, verify, account, password, reset, secure)
+    const hasLogin = lowerUrl.includes("login") ? 1 : 0;
+    const hasVerify = lowerUrl.includes("verify") ? 1 : 0;
+    const hasAccount = lowerUrl.includes("account") ? 1 : 0;
+    const hasPassword = lowerUrl.includes("password") ? 1 : 0;
+    const hasReset = lowerUrl.includes("reset") ? 1 : 0;
+    const hasSecure = lowerUrl.includes("secure") ? 1 : 0;
+    const keywordCount = hasLogin + hasVerify + hasAccount + hasPassword + hasReset + hasSecure;
+
+    // 6. Suspicious characters & encoding
+    const atCount = (url.match(/@/g) || []).length;
+    const hasAtSymbol = atCount > 0 ? 1 : 0;
+    const urlEncodingCount = (url.match(/%[0-9a-fA-F]{2}/g) || []).length;
+    const hasUrlEncoding = urlEncodingCount > 0 ? 1 : 0;
+
+    // 7. Suspicious Top-Level Domains (TLD)
+    const hasSuspiciousTLD = (lowerUrl.includes(".xyz") || lowerUrl.includes(".top") || lowerUrl.includes(".tk")) ? 1 : 0;
+
     return {
-        length: url.length,
-        hasLogin: url.includes("login") ? 1 : 0,
-        hasVerify: url.includes("verify") ? 1 : 0,
-        hasAccount: url.includes("account") ? 1 : 0,
-        dotCount: (url.match(/\./g) || []).length,
-        hasHttps: url.startsWith("https") ? 1 : 0,
-        hasSuspiciousTLD: (url.includes(".xyz") || url.includes(".top") || url.includes(".tk")) ? 1 : 0
+        // Base lengths & legacy aliases
+        length: urlLength,
+        urlLength: urlLength,
+        hostnameLength: hostnameLength,
+        pathLength: pathLength,
+
+        // Character counts
+        dotCount: dotCount,
+        digitCount: digitCount,
+        specialCharCount: specialCharCount,
+        hyphenCount: hyphenCount,
+        hasExcessiveHyphens: hasExcessiveHyphens,
+
+        // Structural & Network features
+        subdomainCount: subdomainCount,
+        hasHttps: hasHttps,
+        isIpAddress: isIpAddress,
+        hasPort: hasPort,
+        hasSuspiciousPort: hasSuspiciousPort,
+
+        // Phishing keyword indicators
+        hasLogin: hasLogin,
+        hasVerify: hasVerify,
+        hasAccount: hasAccount,
+        hasPassword: hasPassword,
+        hasReset: hasReset,
+        hasSecure: hasSecure,
+        keywordCount: keywordCount,
+
+        // Obfuscation & Special indicators
+        hasAtSymbol: hasAtSymbol,
+        atCount: atCount,
+        hasUrlEncoding: hasUrlEncoding,
+        urlEncodingCount: urlEncodingCount,
+        hasSuspiciousTLD: hasSuspiciousTLD
     };
 }
