@@ -396,6 +396,7 @@ function extractFeatures(url) {
             subdomainCount: 0,
             hasHttps: 0,
             isIpAddress: 0,
+            isPrivateIp: 0,
             hasPort: 0,
             hasSuspiciousPort: 0,
             hasLogin: 0,
@@ -455,6 +456,26 @@ function extractFeatures(url) {
     const isIpv6 = hostname.includes(":") && !hostname.includes(".");
     const isIpAddress = (isIpv4 || isIpv6) ? 1 : 0;
 
+    // Detect private / local IP ranges (10.x.x.x, 192.168.x.x, 172.16.x.x-172.31.x.x, 127.x.x.x, 169.254.x.x)
+    let isPrivateIp = 0;
+    if (isIpv4) {
+        const octets = hostname.split(".").map(Number);
+        if (
+            octets[0] === 10 ||
+            octets[0] === 127 ||
+            (octets[0] === 192 && octets[1] === 168) ||
+            (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) ||
+            (octets[0] === 169 && octets[1] === 254)
+        ) {
+            isPrivateIp = 1;
+        }
+    } else if (isIpv6) {
+        const lowerH = hostname.toLowerCase();
+        if (lowerH === "::1" || lowerH.startsWith("fe80:") || lowerH.startsWith("fc") || lowerH.startsWith("fd")) {
+            isPrivateIp = 1;
+        }
+    }
+
     let subdomainCount = 0;
     if (hostname && !isIpAddress) {
         const parts = hostname.split(".").filter(Boolean);
@@ -504,6 +525,7 @@ function extractFeatures(url) {
         subdomainCount: subdomainCount,
         hasHttps: hasHttps,
         isIpAddress: isIpAddress,
+        isPrivateIp: isPrivateIp,
         hasPort: hasPort,
         hasSuspiciousPort: hasSuspiciousPort,
 
@@ -522,5 +544,107 @@ function extractFeatures(url) {
         hasUrlEncoding: hasUrlEncoding,
         urlEncodingCount: urlEncodingCount,
         hasSuspiciousTLD: hasSuspiciousTLD
+    };
+}
+
+/**
+ * Predicts phishing risk based on extracted URL features.
+ * Computes a deterministic heuristic risk score and maps it to a risk level.
+ *
+ * @param {Object} features - Feature vector returned by extractFeatures(url)
+ * @returns {{ score: number, riskLevel: string, risk: string }} Risk assessment object
+ */
+function predictPhishing(features) {
+    if (!features || typeof features !== "object") {
+        return {
+            score: 0,
+            riskLevel: "SAFE",
+            risk: "SAFE",
+            "risk level": "SAFE"
+        };
+    }
+
+    let score = 0;
+
+    // IP address evaluation:
+    // Public IP addresses in URLs are strong phishing indicators (+35).
+    // Private/local IPs (e.g. 192.168.x.x, 10.x.x.x, 172.16.x.x-172.31.x.x) receive a baseline score (+10)
+    // rather than being automatically classified as a high-risk phishing domain.
+    if (features.isIpAddress) {
+        if (features.isPrivateIp) {
+            score += 10;
+        } else {
+            score += 35;
+        }
+    }
+
+    // Suspicious Top-Level Domain (.xyz, .top, .tk)
+    if (features.hasSuspiciousTLD) {
+        score += 30;
+    }
+
+    // Presence of '@' symbol (often used to obscure destination)
+    if (features.hasAtSymbol) {
+        score += 25;
+    }
+
+    // Suspicious non-standard port
+    if (features.hasSuspiciousPort) {
+        score += 20;
+    }
+
+    // Phishing keywords (login, verify, account, password, reset, secure)
+    if (features.keywordCount > 0) {
+        score += Math.min(features.keywordCount * 15, 45);
+    }
+
+    // URL length > 60 characters
+    if (features.urlLength > 60 || features.length > 60) {
+        score += 15;
+    }
+
+    // Excessive dots (e.g., multiple subdomains or deceptive chaining)
+    if (features.dotCount > 3) {
+        score += 10;
+    }
+
+    // Multiple subdomains
+    if (features.subdomainCount >= 2) {
+        score += 15;
+    }
+
+    // Excessive hyphens
+    if (features.hasExcessiveHyphens || features.hyphenCount >= 3) {
+        score += 10;
+    }
+
+    // URL percent-encoding
+    if (features.hasUrlEncoding) {
+        score += 10;
+    }
+
+    // Insecure protocol (lack of HTTPS)
+    if (!features.hasHttps) {
+        score += 10;
+    }
+
+    // Cap the score between 0 and 100
+    const finalScore = Math.min(Math.max(score, 0), 100);
+
+    // Determine risk level: HIGH, MEDIUM, or SAFE
+    let riskLevel = "SAFE";
+    if (finalScore >= 60) {
+        riskLevel = "HIGH";
+    } else if (finalScore >= 30) {
+        riskLevel = "MEDIUM";
+    } else {
+        riskLevel = "SAFE";
+    }
+
+    return {
+        score: finalScore,
+        riskLevel: riskLevel,
+        risk: riskLevel,
+        "risk level": riskLevel
     };
 }
