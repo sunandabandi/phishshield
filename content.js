@@ -198,8 +198,9 @@ function triggerScan() {
 
         console.log("PhishShield: Email link:", resolvedUrl);
 
-        // Run feature extraction for future ML modeling
-        console.log("PhishShield: Extracted features:", extractFeatures(resolvedUrl));
+        const features = extractFeatures(resolvedUrl);
+        const prediction = predictPhishing(features);
+        console.log("PhishShield: Prediction:", resolvedUrl, prediction);
 
         let score = analyzeURL(resolvedUrl);
 
@@ -598,34 +599,36 @@ function predictPhishing(features) {
         score += Math.min(features.keywordCount * 15, 45);
     }
 
-    // URL length > 60 characters
+    // Generic structural indicators (calibrated with lower weights so that
+    // benign redirect/tracking links alone do not accumulate >= 30 points)
+    // 1. URL length > 60 characters
     if (features.urlLength > 60 || features.length > 60) {
-        score += 15;
+        score += 5;
     }
 
-    // Excessive dots (e.g., multiple subdomains or deceptive chaining)
+    // 2. Excessive dots
     if (features.dotCount > 3) {
-        score += 10;
+        score += 5;
     }
 
-    // Multiple subdomains
+    // 3. Multiple subdomains
     if (features.subdomainCount >= 2) {
-        score += 15;
+        score += 5;
     }
 
-    // Excessive hyphens
+    // 4. Excessive hyphens
     if (features.hasExcessiveHyphens || features.hyphenCount >= 3) {
-        score += 10;
+        score += 5;
     }
 
-    // URL percent-encoding
+    // 5. URL percent-encoding (common in legitimate tracking/redirect URLs)
     if (features.hasUrlEncoding) {
-        score += 10;
+        score += 5;
     }
 
-    // Insecure protocol (lack of HTTPS)
+    // 6. Insecure protocol (lack of HTTPS)
     if (!features.hasHttps) {
-        score += 10;
+        score += 5;
     }
 
     // Cap the score between 0 and 100
