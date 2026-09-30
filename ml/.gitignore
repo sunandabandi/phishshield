@@ -1,0 +1,9 @@
+# Ignore large raw dataset archives and uncompressed files
+dataset/PhiUSIIL*
+dataset/*.zip
+dataset/raw_*
+dataset/*.tar.gz
+
+# Python cache
+__pycache__/
+*.py[cod]
