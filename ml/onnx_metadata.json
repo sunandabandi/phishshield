@@ -1,0 +1,116 @@
+{
+  "model_type": "LogisticRegression",
+  "source_model": "ml/phishshield_model.pkl",
+  "output_model": "ml/phishshield_model.onnx",
+  "feature_count": 26,
+  "ordered_feature_names": [
+    "urlLength",
+    "hostnameLength",
+    "pathLength",
+    "dotCount",
+    "digitCount",
+    "specialCharCount",
+    "hyphenCount",
+    "hasExcessiveHyphens",
+    "subdomainCount",
+    "hasHttps",
+    "isIpAddress",
+    "isPrivateIp",
+    "hasPort",
+    "hasSuspiciousPort",
+    "hasLogin",
+    "hasVerify",
+    "hasAccount",
+    "hasPassword",
+    "hasReset",
+    "hasSecure",
+    "keywordCount",
+    "hasAtSymbol",
+    "atCount",
+    "hasUrlEncoding",
+    "urlEncodingCount",
+    "hasSuspiciousTLD"
+  ],
+  "label_mapping": {
+    "0": "legitimate",
+    "1": "phishing"
+  },
+  "conversion_library": "skl2onnx (onnx=1.30.0)",
+  "conversion_date": "2026-09-30T17:02:12.076780+00:00",
+  "verification_status": "VERIFIED_CONSISTENT",
+  "max_probability_difference": 3.5284925901674785e-08,
+  "test_results": [
+    {
+      "url": "https://google.com",
+      "sklearn_prediction": 0,
+      "onnx_prediction": 0,
+      "sklearn_phishing_probability": 0.002942375212824547,
+      "onnx_phishing_probability": 0.0029423534870147705,
+      "difference": 2.17258097766522e-08,
+      "passed": true
+    },
+    {
+      "url": "https://www.google.com",
+      "sklearn_prediction": 0,
+      "onnx_prediction": 0,
+      "sklearn_phishing_probability": 0.0027970575017938035,
+      "onnx_phishing_probability": 0.002797067165374756,
+      "difference": 9.663580952373046e-09,
+      "passed": true
+    },
+    {
+      "url": "https://example.com",
+      "sklearn_prediction": 0,
+      "onnx_prediction": 0,
+      "sklearn_phishing_probability": 0.0033978313776704106,
+      "onnx_phishing_probability": 0.0033978521823883057,
+      "difference": 2.0804717895065578e-08,
+      "passed": true
+    },
+    {
+      "url": "https://www.example.com",
+      "sklearn_prediction": 0,
+      "onnx_prediction": 0,
+      "sklearn_phishing_probability": 0.003230092518664997,
+      "onnx_phishing_probability": 0.003230065107345581,
+      "difference": 2.7411319416126984e-08,
+      "passed": true
+    },
+    {
+      "url": "https://google.co.uk",
+      "sklearn_prediction": 0,
+      "onnx_prediction": 0,
+      "sklearn_phishing_probability": 0.002097016095091307,
+      "onnx_phishing_probability": 0.0020969808101654053,
+      "difference": 3.5284925901674785e-08,
+      "passed": true
+    },
+    {
+      "url": "https://bbc.co.uk",
+      "sklearn_prediction": 0,
+      "onnx_prediction": 0,
+      "sklearn_phishing_probability": 0.0013608661830128012,
+      "onnx_phishing_probability": 0.0013608336448669434,
+      "difference": 3.2538145857807094e-08,
+      "passed": true
+    },
+    {
+      "url": "https://login-secure.xyz/verify-account",
+      "sklearn_prediction": 1,
+      "onnx_prediction": 1,
+      "sklearn_phishing_probability": 1.0,
+      "onnx_phishing_probability": 1.0,
+      "difference": 0.0,
+      "passed": true
+    },
+    {
+      "url": "http://192.168.1.10/login",
+      "sklearn_prediction": 1,
+      "onnx_prediction": 1,
+      "sklearn_phishing_probability": 1.0,
+      "onnx_phishing_probability": 1.0,
+      "difference": 0.0,
+      "passed": true
+    }
+  ]
+}

@@ -41,7 +41,10 @@
     "test_samples": 47074
   },
   "random_seed": 42,
-  "selected_model": "Random Forest",
+  "deployment_model": "LogisticRegression",
+  "benchmark_model": "RandomForestClassifier",
+  "selected_model": "Logistic Regression",
+  "reason_for_deployment_selection": "Random Forest achieved a slightly higher test-set F1 score (0.9950 vs 0.9931), but exhibited dataset-induced false positives on apex legitimate domains (e.g. google.com and example.com) because all 134,850 legitimate training URLs in the UCI PhiUSIIL dataset start with 'www.'. In contrast, Logistic Regression passed all sanity generalization checks on both apex and non-apex domains while maintaining strong test performance (99.42% accuracy, 0.9931 F1-score). Therefore, Logistic Regression was selected as the browser deployment model, while Random Forest is retained as the offline benchmark model.",
   "all_model_metrics": {
     "Logistic Regression": {
       "accuracy": 0.9941156477036156,
@@ -57,7 +60,8 @@
           267,
           19837
         ]
-      ]
+      ],
+      "sanity_check_passed": true
     },
     "Random Forest": {
       "accuracy": 0.995751370183116,
@@ -73,9 +77,84 @@
           176,
           19928
         ]
-      ]
+      ],
+      "sanity_check_passed": false
     }
   },
+  "sanity_test_results": [
+    {
+      "url": "https://google.com",
+      "expected_category": "Legitimate",
+      "expected_class": 0,
+      "predicted_class": 0,
+      "legitimate_probability": 0.9970576247871754,
+      "phishing_probability": 0.002942375212824547,
+      "passed": true
+    },
+    {
+      "url": "https://www.google.com",
+      "expected_category": "Legitimate",
+      "expected_class": 0,
+      "predicted_class": 0,
+      "legitimate_probability": 0.9972029424982062,
+      "phishing_probability": 0.0027970575017938035,
+      "passed": true
+    },
+    {
+      "url": "https://example.com",
+      "expected_category": "Legitimate",
+      "expected_class": 0,
+      "predicted_class": 0,
+      "legitimate_probability": 0.9966021686223296,
+      "phishing_probability": 0.0033978313776704106,
+      "passed": true
+    },
+    {
+      "url": "https://www.example.com",
+      "expected_category": "Legitimate",
+      "expected_class": 0,
+      "predicted_class": 0,
+      "legitimate_probability": 0.996769907481335,
+      "phishing_probability": 0.003230092518664997,
+      "passed": true
+    },
+    {
+      "url": "https://google.co.uk",
+      "expected_category": "Legitimate",
+      "expected_class": 0,
+      "predicted_class": 0,
+      "legitimate_probability": 0.9979029839049087,
+      "phishing_probability": 0.002097016095091307,
+      "passed": true
+    },
+    {
+      "url": "https://bbc.co.uk",
+      "expected_category": "Legitimate",
+      "expected_class": 0,
+      "predicted_class": 0,
+      "legitimate_probability": 0.9986391338169872,
+      "phishing_probability": 0.0013608661830128012,
+      "passed": true
+    },
+    {
+      "url": "https://login-secure.xyz/verify-account",
+      "expected_category": "Phishing / Suspicious",
+      "expected_class": 1,
+      "predicted_class": 1,
+      "legitimate_probability": 0.0,
+      "phishing_probability": 1.0,
+      "passed": true
+    },
+    {
+      "url": "http://192.168.1.10/login",
+      "expected_category": "Phishing / Suspicious",
+      "expected_class": 1,
+      "predicted_class": 1,
+      "legitimate_probability": 0.0,
+      "phishing_probability": 1.0,
+      "passed": true
+    }
+  ],
   "label_mapping": {
     "0": "legitimate",
     "1": "phishing",

@@ -1,5 +1,8 @@
-# PhishShield ML Training Dependencies (Minimal Set)
+# PhishShield ML Training & ONNX Conversion Dependencies
 pandas>=2.0.0
 numpy>=1.24.0
 scikit-learn>=1.3.0
 joblib>=1.3.0
+skl2onnx>=1.16.0
+onnx>=1.15.0
+onnxruntime>=1.17.0
