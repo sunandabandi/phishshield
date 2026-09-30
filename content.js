@@ -18,6 +18,13 @@ let linkDetails = {
     safe: []
 };
 
+let mlDetails = {};
+
+// Pre-warm local ONNX ML session in the background
+if (typeof initMLSession === "function") {
+    initMLSession().catch(e => console.warn("PhishShield: Background ML pre-warm deferred:", e));
+}
+
 // Initial scan on load
 triggerScan();
 
@@ -130,7 +137,7 @@ function computeEmailFingerprint(containers) {
 /**
  * Main email scanner routine.
  */
-function triggerScan() {
+async function triggerScan() {
     if (isCurrentlyScanning) return;
 
     const emailContainers = getOpenedEmailBodyContainers();
@@ -183,62 +190,122 @@ function triggerScan() {
         safe: []
     };
 
+    const newMlDetails = {};
     const detectedUrls = [];
 
-    rawAnchors.forEach(link => {
+    for (const link of rawAnchors) {
         const rawHref = link.getAttribute('href') || link.href;
-        if (!rawHref) return;
+        if (!rawHref) continue;
 
         const resolvedUrl = unwrapGmailUrl(rawHref);
         const text = (link.textContent || link.innerText || "").trim();
 
         if (!isValidWebUrl(resolvedUrl)) {
-            return;
+            continue;
         }
 
         console.log("PhishShield: Email link:", resolvedUrl);
 
+        // 1. Existing Feature Extraction & Heuristic
         const features = extractFeatures(resolvedUrl);
-        const prediction = predictPhishing(features);
-        console.log("PhishShield: Prediction:", resolvedUrl, prediction);
+        const heuristicPrediction = predictPhishing(features);
+        console.log("PhishShield: Prediction:", resolvedUrl, heuristicPrediction);
 
-        let score = analyzeURL(resolvedUrl);
-
-        if (isBlacklisted(resolvedUrl)) {
-            score += 80;
+        // 2. Existing Rule-based Score Calculation
+        let ruleScore = analyzeURL(resolvedUrl);
+        const blacklisted = isBlacklisted(resolvedUrl);
+        if (blacklisted) {
+            ruleScore += 80;
             console.log("BLACKLISTED:", resolvedUrl);
         }
 
         if (isHiddenLink(text, resolvedUrl)) {
-            score += 40;
+            ruleScore += 40;
             console.log("Hidden link detected:", resolvedUrl);
         }
 
-        score += textScore;
+        ruleScore += textScore;
+
+        // 3. Local Browser ONNX ML Inference
+        let mlResult = null;
+        try {
+            if (typeof predictWithML === "function") {
+                mlResult = await predictWithML(resolvedUrl);
+            }
+        } catch (mlErr) {
+            console.error("PhishShield ML: Inference error for URL:", resolvedUrl, mlErr);
+            mlResult = null;
+        }
+
+        // 4. Combined Hybrid Score (60% Rule + 40% ML)
+        let mlScore = null;
+        let hybridScore = ruleScore; // Graceful fallback to ruleScore if ML unavailable
+
+        if (mlResult && typeof mlResult.mlScore === "number") {
+            mlScore = mlResult.mlScore;
+            hybridScore = Math.round((ruleScore * 0.6) + (mlScore * 0.4));
+        }
+
+        // Requirement 11: Preserve blacklist and high-confidence rule protection
+        // If the URL is blacklisted or the rule score alone indicates HIGH risk (>= 60),
+        // ensure hybridScore is never reduced by a lower ML score.
+        if (blacklisted || ruleScore >= 60) {
+            hybridScore = Math.max(hybridScore, ruleScore);
+        }
+
+        // Clamp: 0 <= hybridScore <= 100
+        hybridScore = Math.min(Math.max(hybridScore, 0), 100);
+
+        // Requirement 12: Clear numerical logging for ML results
+        console.log("PhishShield: ML Prediction:\n" +
+            `  URL: ${resolvedUrl}\n` +
+            `  Prediction: ${mlResult ? mlResult.prediction : "N/A (rule-only fallback)"}\n` +
+            `  Legitimate Probability: ${mlResult ? mlResult.legitimateProbability.toFixed(6) : "N/A"}\n` +
+            `  Phishing Probability: ${mlResult ? mlResult.phishingProbability.toFixed(6) : "N/A"}\n` +
+            `  ML Score: ${mlScore !== null ? mlScore.toFixed(2) : "N/A"}\n` +
+            `  Rule Score: ${ruleScore}\n` +
+            `  Hybrid Score: ${hybridScore}`
+        );
 
         newStats.total++;
         detectedUrls.push(resolvedUrl);
 
-        if (score > 70) {
+        // Requirement 10: Risk level thresholds on hybridScore
+        // HIGH: >= 60, MEDIUM: >= 30, SAFE: < 30
+        let riskLevel = "SAFE";
+        if (hybridScore >= 60) {
+            riskLevel = "HIGH";
             newStats.high++;
             newLinkDetails.high.push(resolvedUrl);
-        } else if (score > 40) {
+        } else if (hybridScore >= 30) {
+            riskLevel = "MEDIUM";
             newStats.medium++;
             newLinkDetails.medium.push(resolvedUrl);
         } else {
+            riskLevel = "SAFE";
             newStats.safe++;
             newLinkDetails.safe.push(resolvedUrl);
         }
 
-        applyRisk(link, resolvedUrl, score);
-    });
+        newMlDetails[resolvedUrl] = {
+            mlPrediction: mlResult ? mlResult.prediction : null,
+            mlPhishingProbability: mlResult ? mlResult.phishingProbability : null,
+            mlScore: mlScore,
+            ruleScore: ruleScore,
+            hybridScore: hybridScore,
+            riskLevel: riskLevel
+        };
+
+        applyRisk(link, resolvedUrl, hybridScore);
+    }
 
     stats = newStats;
     linkDetails = newLinkDetails;
+    mlDetails = newMlDetails;
 
     console.log(`PhishShield: Found ${stats.total} links in current email`);
 
-    chrome.storage.local.set({ stats, linkDetails }, () => {
+    chrome.storage.local.set({ stats, linkDetails, mlDetails }, () => {
         console.log("PhishShield: Current email results updated", stats);
         isCurrentlyScanning = false;
     });
@@ -247,7 +314,8 @@ function triggerScan() {
 function resetStats() {
     stats = { total: 0, high: 0, medium: 0, safe: 0 };
     linkDetails = { high: [], medium: [], safe: [] };
-    chrome.storage.local.set({ stats, linkDetails }, () => {
+    mlDetails = {};
+    chrome.storage.local.set({ stats, linkDetails, mlDetails }, () => {
         console.log("PhishShield: Results cleared (no active email)");
     });
 }
@@ -355,11 +423,11 @@ function isHiddenLink(text, url) {
 }
 
 function applyRisk(link, url, score) {
-    if (score > 70) {
+    if (score >= 60) {
         console.log("HIGH RISK:", url);
         highlightLink(link, "red");
     }
-    else if (score > 40) {
+    else if (score >= 30) {
         console.log("MEDIUM RISK:", url);
         highlightLink(link, "orange");
     }
@@ -426,7 +494,14 @@ function extractFeatures(url) {
     try {
         const parsed = new URL(url);
         hostname = parsed.hostname || "";
-        pathname = (parsed.pathname || "") + (parsed.search || "") + (parsed.hash || "");
+        let path = parsed.pathname || "";
+        // In WHATWG URL API (browsers), parsed.pathname defaults to "/" even if the input URL has no path.
+        // Normalize so that bare URLs without a path string match the training extractor (where pathLength = 0).
+        const urlWithoutQuery = url.split("?")[0].split("#")[0];
+        if (path === "/" && !urlWithoutQuery.endsWith("/")) {
+            path = "";
+        }
+        pathname = path + (parsed.search || "") + (parsed.hash || "");
         port = parsed.port || "";
         protocol = parsed.protocol || "";
     } catch {

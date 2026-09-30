@@ -9,7 +9,24 @@
   "content_scripts": [
     {
       "matches": ["*://mail.google.com/*"],
-      "js": ["blacklist.js", "content.js"]
+      "js": [
+        "lib/ort.min.js",
+        "lib/phishshield_inference.js",
+        "blacklist.js",
+        "content.js"
+      ]
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "models/phishshield_model.onnx",
+        "lib/ort-wasm.wasm",
+        "lib/ort-wasm-simd.wasm",
+        "lib/ort-wasm-threaded.wasm",
+        "lib/ort-wasm-simd-threaded.wasm"
+      ],
+      "matches": ["*://mail.google.com/*"]
     }
   ]
 }
