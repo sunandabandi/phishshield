@@ -20,6 +20,614 @@ let linkDetails = {
 
 let mlDetails = {};
 
+// --- Extension Enabled & In-Page Panel State Management ---
+let isExtensionEnabled = true;
+let isPanelClosedForCurrentEmail = false;
+let isPanelMinimized = false;
+let lastPanelFingerprint = null;
+let currentScanData = null;
+
+// Initialize enabled state from chrome.storage.local
+if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+    chrome.storage.local.get(["enabled", "isEnabled"], (res) => {
+        if (!chrome.runtime.lastError && res) {
+            if (typeof res.enabled === "boolean") {
+                isExtensionEnabled = res.enabled;
+            } else if (typeof res.isEnabled === "boolean") {
+                isExtensionEnabled = res.isEnabled;
+            }
+        }
+    });
+
+    if (chrome.storage.onChanged) {
+        chrome.storage.onChanged.addListener((changes, area) => {
+            if (area === "local") {
+                let changed = false;
+                if (changes.enabled !== undefined) {
+                    isExtensionEnabled = changes.enabled.newValue !== false;
+                    changed = true;
+                } else if (changes.isEnabled !== undefined) {
+                    isExtensionEnabled = changes.isEnabled.newValue !== false;
+                    changed = true;
+                }
+                if (changed) {
+                    if (!isExtensionEnabled) {
+                        hideInPagePanel();
+                    } else {
+                        scheduleDebouncedScan(50);
+                    }
+                }
+            }
+        });
+    }
+}
+
+/**
+ * Injects scoped CSS styles for the in-page PhishShield panel.
+ */
+function ensureInPagePanelStyles() {
+    if (document.getElementById("phishshield-panel-styles")) return;
+    const styleEl = document.createElement("style");
+    styleEl.id = "phishshield-panel-styles";
+    styleEl.textContent = `
+        #phishshield-panel {
+            position: fixed;
+            top: 72px;
+            right: 24px;
+            z-index: 999999;
+            width: 270px;
+            background: #111827;
+            color: #f8fafc;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            font-size: 13px;
+            line-height: 1.4;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
+            box-sizing: border-box;
+            overflow: hidden;
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            pointer-events: auto;
+        }
+        #phishshield-panel * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        #phishshield-panel.ps-border-high {
+            border-color: rgba(239, 68, 68, 0.5);
+            box-shadow: 0 10px 25px -5px rgba(239, 68, 68, 0.25), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
+        }
+        #phishshield-panel.ps-border-medium {
+            border-color: rgba(245, 158, 11, 0.5);
+            box-shadow: 0 10px 25px -5px rgba(245, 158, 11, 0.25), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
+        }
+        #phishshield-panel.ps-border-safe {
+            border-color: rgba(16, 185, 129, 0.5);
+            box-shadow: 0 10px 25px -5px rgba(16, 185, 129, 0.18), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
+        }
+        #phishshield-panel.ps-border-scanning {
+            border-color: rgba(56, 189, 248, 0.45);
+        }
+        #phishshield-panel .ps-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 12px;
+            background: #162032;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        #phishshield-panel .ps-brand {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        #phishshield-panel .ps-logo {
+            width: 22px;
+            height: 22px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            background: rgba(56, 189, 248, 0.15);
+            border: 1px solid rgba(56, 189, 248, 0.3);
+            color: #38bdf8;
+            flex-shrink: 0;
+        }
+        #phishshield-panel .ps-title-group {
+            display: flex;
+            flex-direction: column;
+        }
+        #phishshield-panel .ps-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: #f8fafc;
+            letter-spacing: -0.2px;
+            line-height: 1.2;
+        }
+        #phishshield-panel .ps-subtitle {
+            font-size: 10px;
+            color: #94a3b8;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            line-height: 1.2;
+        }
+        #phishshield-panel .ps-actions {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        #phishshield-panel .ps-btn {
+            background: transparent;
+            border: none;
+            color: #94a3b8;
+            cursor: pointer;
+            border-radius: 4px;
+            padding: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+            transition: background 0.15s, color 0.15s;
+        }
+        #phishshield-panel .ps-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: #f8fafc;
+        }
+        #phishshield-panel .ps-btn:focus-visible {
+            outline: 2px solid #38bdf8;
+            outline-offset: 1px;
+        }
+        #phishshield-panel .ps-body {
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        #phishshield-panel .ps-status-card {
+            padding: 8px 10px;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+        #phishshield-panel .ps-status-card.ps-status-high {
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+        #phishshield-panel .ps-status-card.ps-status-medium {
+            background: rgba(245, 158, 11, 0.15);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+        }
+        #phishshield-panel .ps-status-card.ps-status-safe {
+            background: rgba(16, 185, 129, 0.15);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+        #phishshield-panel .ps-status-card.ps-status-scanning {
+            background: rgba(56, 189, 248, 0.12);
+            border: 1px solid rgba(56, 189, 248, 0.25);
+        }
+        #phishshield-panel .ps-badge-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        #phishshield-panel .ps-badge {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+        #phishshield-panel .ps-badge-high {
+            color: #ef4444;
+            background: rgba(239, 68, 68, 0.25);
+        }
+        #phishshield-panel .ps-badge-medium {
+            color: #f59e0b;
+            background: rgba(245, 158, 11, 0.25);
+        }
+        #phishshield-panel .ps-badge-safe {
+            color: #10b981;
+            background: rgba(16, 185, 129, 0.25);
+        }
+        #phishshield-panel .ps-badge-scanning {
+            color: #38bdf8;
+            background: rgba(56, 189, 248, 0.25);
+        }
+        #phishshield-panel .ps-status-desc {
+            font-size: 12px;
+            font-weight: 600;
+            color: #f8fafc;
+        }
+        #phishshield-panel .ps-summary-grid {
+            background: #162032;
+            border-radius: 8px;
+            padding: 8px 10px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+            font-size: 11px;
+        }
+        #phishshield-panel .ps-summary-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: #94a3b8;
+        }
+        #phishshield-panel .ps-summary-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        #phishshield-panel .ps-dot-total { background: #38bdf8; }
+        #phishshield-panel .ps-dot-high { background: #ef4444; }
+        #phishshield-panel .ps-dot-medium { background: #f59e0b; }
+        #phishshield-panel .ps-dot-safe { background: #10b981; }
+        #phishshield-panel .ps-summary-val {
+            font-weight: 700;
+            color: #f8fafc;
+        }
+        #phishshield-panel .ps-ml-indicator {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 11px;
+            padding: 5px 8px;
+            background: rgba(56, 189, 248, 0.08);
+            border: 1px solid rgba(56, 189, 248, 0.18);
+            border-radius: 6px;
+            color: #94a3b8;
+        }
+        #phishshield-panel .ps-ml-active-text {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: #38bdf8;
+            font-weight: 600;
+        }
+        #phishshield-panel .ps-pulse {
+            width: 6px;
+            height: 6px;
+            background: #38bdf8;
+            border-radius: 50%;
+            box-shadow: 0 0 6px #38bdf8;
+        }
+        /* Minimized State */
+        #phishshield-panel.ps-minimized {
+            width: auto;
+            padding: 6px 10px;
+            cursor: pointer;
+            background: #162032;
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        #phishshield-panel.ps-minimized:hover {
+            background: #1c2940;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+        #phishshield-panel.ps-minimized .ps-header,
+        #phishshield-panel.ps-minimized .ps-body {
+            display: none !important;
+        }
+        #phishshield-panel .ps-mini-bar {
+            display: none;
+            align-items: center;
+            gap: 8px;
+        }
+        #phishshield-panel.ps-minimized .ps-mini-bar {
+            display: flex;
+        }
+        #phishshield-panel .ps-mini-title {
+            font-size: 11px;
+            font-weight: 700;
+            color: #f8fafc;
+        }
+    `;
+    document.head.appendChild(styleEl);
+}
+
+/**
+ * Retrieves the existing in-page PhishShield panel or creates it if not present.
+ */
+function getOrCreateInPagePanel() {
+    ensureInPagePanelStyles();
+    let panel = document.getElementById("phishshield-panel");
+    if (!panel) {
+        panel = document.createElement("div");
+        panel.id = "phishshield-panel";
+        panel.setAttribute("role", "region");
+        panel.setAttribute("aria-label", "PhishShield Security Scan");
+        document.body.appendChild(panel);
+    }
+    return panel;
+}
+
+/**
+ * Hides the in-page PhishShield panel.
+ */
+function hideInPagePanel() {
+    const panel = document.getElementById("phishshield-panel");
+    if (panel) {
+        panel.style.display = "none";
+    }
+}
+
+/**
+ * Displays the in-page panel in the SCANNING state immediately upon email detection.
+ */
+function showInPagePanelScanning() {
+    if (!isExtensionEnabled) {
+        hideInPagePanel();
+        return;
+    }
+    if (isPanelClosedForCurrentEmail) {
+        return;
+    }
+
+    const panel = getOrCreateInPagePanel();
+    panel.style.display = "block";
+
+    if (isPanelMinimized) {
+        renderInPagePanelMinimized(panel, "SCANNING", "Scanning email...", currentScanData);
+        return;
+    }
+
+    panel.className = "ps-border-scanning";
+    panel.innerHTML = `
+        <div class="ps-header">
+            <div class="ps-brand">
+                <div class="ps-logo" aria-hidden="true">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                        <path d="m9 12 2 2 4-4"/>
+                    </svg>
+                </div>
+                <div class="ps-title-group">
+                    <span class="ps-title">PhishShield</span>
+                    <span class="ps-subtitle">Security Scan</span>
+                </div>
+            </div>
+            <div class="ps-actions">
+                <button type="button" class="ps-btn" id="ps-btn-min" aria-label="Minimize PhishShield panel" title="Minimize">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="5" y1="12" x2="19" y2="12"/>
+                    </svg>
+                </button>
+                <button type="button" class="ps-btn" id="ps-btn-close" aria-label="Close PhishShield panel for current email" title="Close">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+        <div class="ps-body">
+            <div class="ps-status-card ps-status-scanning">
+                <div class="ps-badge-row">
+                    <span class="ps-badge ps-badge-scanning">SCANNING</span>
+                </div>
+                <span class="ps-status-desc">Scanning email...</span>
+            </div>
+            <div class="ps-summary-grid">
+                <div class="ps-summary-item"><span class="ps-summary-dot ps-dot-total"></span><span>Analyzing links...</span></div>
+            </div>
+            <div class="ps-ml-indicator">
+                <div class="ps-ml-active-text"><span class="ps-pulse"></span><span>ML Detection: Active</span></div>
+            </div>
+        </div>
+        <div class="ps-mini-bar" id="ps-mini-bar"></div>
+    `;
+
+    attachPanelButtonHandlers(panel, "SCANNING", "Scanning email...", currentScanData);
+}
+
+/**
+ * Updates the in-page panel with final hybrid scan results.
+ */
+function updateInPagePanelResults(scanData) {
+    currentScanData = scanData;
+
+    if (!isExtensionEnabled) {
+        hideInPagePanel();
+        return;
+    }
+    if (isPanelClosedForCurrentEmail) {
+        return;
+    }
+
+    const panel = getOrCreateInPagePanel();
+    panel.style.display = "block";
+
+    const s = scanData.stats || { total: 0, high: 0, medium: 0, safe: 0 };
+    const mlDet = scanData.mlDetails || {};
+    const mlActive = typeof predictWithML === "function";
+
+    let overallRisk = "SAFE";
+    let statusDesc = "Email appears safe";
+
+    if (s.high > 0) {
+        overallRisk = "HIGH";
+        statusDesc = "Potential phishing detected";
+    } else if (s.medium > 0) {
+        overallRisk = "MEDIUM";
+        statusDesc = "Some links require caution";
+    } else if (s.total > 0) {
+        overallRisk = "SAFE";
+        statusDesc = "Email appears safe";
+    } else {
+        overallRisk = "SAFE";
+        statusDesc = "Email appears safe";
+    }
+
+    // Calculate user-friendly confidence metric
+    let confidenceText = "";
+    if (mlActive && s.total > 0 && Object.keys(mlDet).length > 0) {
+        let confSum = 0;
+        let confCount = 0;
+        for (const url in mlDet) {
+            const item = mlDet[url];
+            if (item && typeof item.mlPhishingProbability === "number") {
+                const prob = item.mlPhishingProbability;
+                const conf = item.riskLevel === "SAFE" ? (1 - prob) : prob;
+                confSum += conf;
+                confCount++;
+            }
+        }
+        if (confCount > 0) {
+            const avg = Math.min(Math.max(Math.round((confSum / confCount) * 100), 1), 99);
+            confidenceText = ` · Confidence: ${avg}%`;
+        }
+    }
+
+    if (isPanelMinimized) {
+        renderInPagePanelMinimized(panel, overallRisk, statusDesc, scanData);
+        return;
+    }
+
+    panel.className = `ps-border-${overallRisk.toLowerCase()}`;
+    panel.innerHTML = `
+        <div class="ps-header">
+            <div class="ps-brand">
+                <div class="ps-logo" aria-hidden="true">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                        <path d="m9 12 2 2 4-4"/>
+                    </svg>
+                </div>
+                <div class="ps-title-group">
+                    <span class="ps-title">PhishShield</span>
+                    <span class="ps-subtitle">Security Scan</span>
+                </div>
+            </div>
+            <div class="ps-actions">
+                <button type="button" class="ps-btn" id="ps-btn-min" aria-label="Minimize PhishShield panel" title="Minimize">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="5" y1="12" x2="19" y2="12"/>
+                    </svg>
+                </button>
+                <button type="button" class="ps-btn" id="ps-btn-close" aria-label="Close PhishShield panel for current email" title="Close">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+        <div class="ps-body">
+            <div class="ps-status-card ps-status-${overallRisk.toLowerCase()}">
+                <div class="ps-badge-row">
+                    <span class="ps-badge ps-badge-${overallRisk.toLowerCase()}">${overallRisk}</span>
+                </div>
+                <span class="ps-status-desc">${statusDesc}</span>
+            </div>
+            <div class="ps-summary-grid">
+                <div class="ps-summary-item">
+                    <span class="ps-summary-dot ps-dot-total"></span>
+                    <span><strong class="ps-summary-val">${s.total}</strong> links scanned</span>
+                </div>
+                <div class="ps-summary-item">
+                    <span class="ps-summary-dot ps-dot-high"></span>
+                    <span><strong class="ps-summary-val">${s.high}</strong> high risk</span>
+                </div>
+                <div class="ps-summary-item">
+                    <span class="ps-summary-dot ps-dot-medium"></span>
+                    <span><strong class="ps-summary-val">${s.medium}</strong> medium risk</span>
+                </div>
+                <div class="ps-summary-item">
+                    <span class="ps-summary-dot ps-dot-safe"></span>
+                    <span><strong class="ps-summary-val">${s.safe}</strong> safe</span>
+                </div>
+            </div>
+            <div class="ps-ml-indicator">
+                <div class="ps-ml-active-text">
+                    <span class="ps-pulse"></span>
+                    <span>${mlActive ? `ML Detection: Active${confidenceText}` : "Rule-Based Engine Active"}</span>
+                </div>
+            </div>
+        </div>
+        <div class="ps-mini-bar" id="ps-mini-bar"></div>
+    `;
+
+    attachPanelButtonHandlers(panel, overallRisk, statusDesc, scanData);
+}
+
+/**
+ * Renders the compact minimized badge representation.
+ */
+function renderInPagePanelMinimized(panel, status, desc, scanData) {
+    panel.className = `ps-minimized ps-border-${status.toLowerCase()}`;
+    panel.innerHTML = `
+        <div class="ps-mini-bar" style="display:flex;">
+            <div class="ps-logo" style="width:18px;height:18px;" aria-hidden="true">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    <path d="m9 12 2 2 4-4"/>
+                </svg>
+            </div>
+            <span class="ps-mini-title">PhishShield</span>
+            <span class="ps-badge ps-badge-${status.toLowerCase()}">${status}</span>
+            <button type="button" class="ps-btn" id="ps-btn-expand" aria-label="Expand PhishShield panel" title="Expand panel">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="15 3 21 3 21 9"/>
+                    <polyline points="9 21 3 21 3 15"/>
+                    <line x1="21" y1="3" x2="14" y2="10"/>
+                    <line x1="3" y1="21" x2="10" y2="14"/>
+                </svg>
+            </button>
+            <button type="button" class="ps-btn" id="ps-btn-close-mini" aria-label="Close PhishShield panel" title="Close">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+            </button>
+        </div>
+    `;
+
+    panel.onclick = (e) => {
+        if (e.target.closest("#ps-btn-close-mini")) {
+            e.stopPropagation();
+            panel.style.display = "none";
+            isPanelClosedForCurrentEmail = true;
+            return;
+        }
+        isPanelMinimized = false;
+        if (scanData) {
+            updateInPagePanelResults(scanData);
+        } else {
+            showInPagePanelScanning();
+        }
+    };
+}
+
+/**
+ * Attaches event listeners to the panel buttons.
+ */
+function attachPanelButtonHandlers(panel, status, desc, scanData) {
+    const minBtn = panel.querySelector("#ps-btn-min");
+    if (minBtn) {
+        minBtn.onclick = (e) => {
+            e.stopPropagation();
+            isPanelMinimized = true;
+            renderInPagePanelMinimized(panel, status, desc, scanData);
+        };
+    }
+
+    const closeBtn = panel.querySelector("#ps-btn-close");
+    if (closeBtn) {
+        closeBtn.onclick = (e) => {
+            e.stopPropagation();
+            panel.style.display = "none";
+            isPanelClosedForCurrentEmail = true;
+        };
+    }
+}
+
 // Pre-warm local ONNX ML session in the background
 if (typeof initMLSession === "function") {
     initMLSession().catch(e => console.warn("PhishShield: Background ML pre-warm deferred:", e));
@@ -150,8 +758,25 @@ async function triggerScan() {
             currentEmailFingerprint = null;
             resetStats();
         }
+        hideInPagePanel();
         return;
     }
+
+    // Check extension enabled state
+    if (!isExtensionEnabled) {
+        hideInPagePanel();
+        return;
+    }
+
+    // If user opened a different email, reset close & minimize state for the new email
+    if (newFingerprint !== lastPanelFingerprint) {
+        isPanelClosedForCurrentEmail = false;
+        isPanelMinimized = false;
+        lastPanelFingerprint = newFingerprint;
+    }
+
+    // Immediately show in-page scanning state (Requirement 7)
+    showInPagePanelScanning();
 
     isCurrentlyScanning = true;
     currentEmailFingerprint = newFingerprint;
@@ -305,6 +930,13 @@ async function triggerScan() {
 
     console.log(`PhishShield: Found ${stats.total} links in current email`);
 
+    // Update in-page panel with final results (Requirement 5 & 6)
+    updateInPagePanelResults({
+        stats: newStats,
+        linkDetails: newLinkDetails,
+        mlDetails: newMlDetails
+    });
+
     chrome.storage.local.set({ stats, linkDetails, mlDetails }, () => {
         console.log("PhishShield: Current email results updated", stats);
         isCurrentlyScanning = false;
@@ -315,6 +947,8 @@ function resetStats() {
     stats = { total: 0, high: 0, medium: 0, safe: 0 };
     linkDetails = { high: [], medium: [], safe: [] };
     mlDetails = {};
+    currentScanData = null;
+    hideInPagePanel();
     chrome.storage.local.set({ stats, linkDetails, mlDetails }, () => {
         console.log("PhishShield: Results cleared (no active email)");
     });
