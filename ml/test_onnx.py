@@ -32,16 +32,24 @@ ONNX_METADATA_PATH = BASE_DIR / "onnx_metadata.json"
 TOLERANCE = 1e-4
 
 TEST_URLS = [
-    # Legitimate
+    # Legitimate (12 URLs)
     "https://google.com",
     "https://www.google.com",
     "https://example.com",
     "https://www.example.com",
     "https://google.co.uk",
     "https://bbc.co.uk",
-    # Phishing / Suspicious
+    "https://github.com/sunandabandi/phishshield",
+    "https://en.wikipedia.org/wiki/Phishing",
+    "https://internshala.com/student/dashboard?utm_source=eoi_student_dashboard&utm_medium=email&utm_campaign=student_dashboard",
+    "https://www.linkedin.com/comm/jobs/view/1234567890?trackingId=abcdef&refId=12345&midToken=AQE&trk=eml-job-alert",
+    "https://click.mail.coursera.org/?qs=9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b",
+    "https://substack.com/redirect/123456?r=abcdef&utm_medium=email",
+    # Phishing (4 URLs)
     "https://login-secure.xyz/verify-account",
     "http://192.168.1.10/login",
+    "https://verify-account.top",
+    "https://secure-update.tk:8080/login",
 ]
 
 
@@ -89,11 +97,11 @@ def test_onnx():
     print(f"[*] Comparison tolerance:      {TOLERANCE}")
 
     # Prepare table headers
-    print("\n" + "=" * 115)
+    print("\n" + "=" * 135)
     print(
-        f"{'URL':<42} | {'SK_Pred':<7} | {'ONNX_Pred':<9} | {'SK_Prob(1)':<11} | {'ONNX_Prob(1)':<12} | {'Diff':<12} | {'Match'}"
+        f"{'URL':<60} | {'SK_Pred':<7} | {'ONNX_Pred':<9} | {'SK_Prob(1)':<11} | {'ONNX_Prob(1)':<12} | {'Diff':<12} | {'Match'}"
     )
-    print("=" * 115)
+    print("=" * 135)
 
     all_matched = True
     max_diff = 0.0
@@ -133,7 +141,7 @@ def test_onnx():
         status_str = "PASS" if passed else "FAIL"
 
         print(
-            f"{url:<42} | {sk_pred:<7} | {onnx_pred:<9} | {sk_prob:<11.6f} | {onnx_prob:<12.6f} | {diff:<12.2e} | {status_str}"
+            f"{url:<60} | {sk_pred:<7} | {onnx_pred:<9} | {sk_prob:<11.6f} | {onnx_prob:<12.6f} | {diff:<12.2e} | {status_str}"
         )
 
         comparison_records.append({

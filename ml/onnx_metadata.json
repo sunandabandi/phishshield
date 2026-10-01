@@ -1,5 +1,5 @@
 {
-  "model_type": "LogisticRegression",
+  "model_type": "Pipeline",
   "source_model": "ml/phishshield_model.pkl",
   "output_model": "ml/phishshield_model.onnx",
   "feature_count": 26,
@@ -36,80 +36,152 @@
     "1": "phishing"
   },
   "conversion_library": "skl2onnx (onnx=1.30.0)",
-  "conversion_date": "2026-09-30T17:02:12.076780+00:00",
+  "conversion_date": "2026-10-01T05:22:29.345254+00:00",
   "verification_status": "VERIFIED_CONSISTENT",
-  "max_probability_difference": 3.5284925901674785e-08,
+  "max_probability_difference": 1.7578640518212119e-07,
   "test_results": [
     {
       "url": "https://google.com",
       "sklearn_prediction": 0,
       "onnx_prediction": 0,
-      "sklearn_phishing_probability": 0.002942375212824547,
-      "onnx_phishing_probability": 0.0029423534870147705,
-      "difference": 2.17258097766522e-08,
+      "sklearn_phishing_probability": 0.08718250860129528,
+      "onnx_phishing_probability": 0.08718246221542358,
+      "difference": 4.638587169925046e-08,
       "passed": true
     },
     {
       "url": "https://www.google.com",
       "sklearn_prediction": 0,
       "onnx_prediction": 0,
-      "sklearn_phishing_probability": 0.0027970575017938035,
-      "onnx_phishing_probability": 0.002797067165374756,
-      "difference": 9.663580952373046e-09,
+      "sklearn_phishing_probability": 0.04422944283054266,
+      "onnx_phishing_probability": 0.044229358434677124,
+      "difference": 8.439586553915523e-08,
       "passed": true
     },
     {
       "url": "https://example.com",
       "sklearn_prediction": 0,
       "onnx_prediction": 0,
-      "sklearn_phishing_probability": 0.0033978313776704106,
-      "onnx_phishing_probability": 0.0033978521823883057,
-      "difference": 2.0804717895065578e-08,
+      "sklearn_phishing_probability": 0.10281637134046656,
+      "onnx_phishing_probability": 0.10281634330749512,
+      "difference": 2.8032971444158505e-08,
       "passed": true
     },
     {
       "url": "https://www.example.com",
       "sklearn_prediction": 0,
       "onnx_prediction": 0,
-      "sklearn_phishing_probability": 0.003230092518664997,
-      "onnx_phishing_probability": 0.003230065107345581,
-      "difference": 2.7411319416126984e-08,
+      "sklearn_phishing_probability": 0.052604702603714054,
+      "onnx_phishing_probability": 0.05260470509529114,
+      "difference": 2.4915770835409745e-09,
       "passed": true
     },
     {
       "url": "https://google.co.uk",
       "sklearn_prediction": 0,
       "onnx_prediction": 0,
-      "sklearn_phishing_probability": 0.002097016095091307,
-      "onnx_phishing_probability": 0.0020969808101654053,
-      "difference": 3.5284925901674785e-08,
+      "sklearn_phishing_probability": 0.03114202787964212,
+      "onnx_phishing_probability": 0.031141996383666992,
+      "difference": 3.149597512658309e-08,
       "passed": true
     },
     {
       "url": "https://bbc.co.uk",
       "sklearn_prediction": 0,
       "onnx_prediction": 0,
-      "sklearn_phishing_probability": 0.0013608661830128012,
-      "onnx_phishing_probability": 0.0013608336448669434,
-      "difference": 3.2538145857807094e-08,
+      "sklearn_phishing_probability": 0.018267262619937087,
+      "onnx_phishing_probability": 0.01826724410057068,
+      "difference": 1.8519366408453752e-08,
+      "passed": true
+    },
+    {
+      "url": "https://github.com/sunandabandi/phishshield",
+      "sklearn_prediction": 0,
+      "onnx_prediction": 0,
+      "sklearn_phishing_probability": 0.07648226643726015,
+      "onnx_phishing_probability": 0.07648220658302307,
+      "difference": 5.985423708054771e-08,
+      "passed": true
+    },
+    {
+      "url": "https://en.wikipedia.org/wiki/Phishing",
+      "sklearn_prediction": 0,
+      "onnx_prediction": 0,
+      "sklearn_phishing_probability": 0.056916004242094885,
+      "onnx_phishing_probability": 0.05691593885421753,
+      "difference": 6.538787735571594e-08,
+      "passed": true
+    },
+    {
+      "url": "https://internshala.com/student/dashboard?utm_source=eoi_student_dashboard&utm_medium=email&utm_campaign=student_dashboard",
+      "sklearn_prediction": 0,
+      "onnx_prediction": 0,
+      "sklearn_phishing_probability": 0.105872393438218,
+      "onnx_phishing_probability": 0.10587233304977417,
+      "difference": 6.038844382882935e-08,
+      "passed": true
+    },
+    {
+      "url": "https://www.linkedin.com/comm/jobs/view/1234567890?trackingId=abcdef&refId=12345&midToken=AQE&trk=eml-job-alert",
+      "sklearn_prediction": 0,
+      "onnx_prediction": 0,
+      "sklearn_phishing_probability": 0.3072981905576649,
+      "onnx_phishing_probability": 0.30729812383651733,
+      "difference": 6.672114755135183e-08,
+      "passed": true
+    },
+    {
+      "url": "https://click.mail.coursera.org/?qs=9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b",
+      "sklearn_prediction": 0,
+      "onnx_prediction": 0,
+      "sklearn_phishing_probability": 0.18441557581463394,
+      "onnx_phishing_probability": 0.18441540002822876,
+      "difference": 1.7578640518212119e-07,
+      "passed": true
+    },
+    {
+      "url": "https://substack.com/redirect/123456?r=abcdef&utm_medium=email",
+      "sklearn_prediction": 0,
+      "onnx_prediction": 0,
+      "sklearn_phishing_probability": 0.1407243982518545,
+      "onnx_phishing_probability": 0.1407242715358734,
+      "difference": 1.267159810969254e-07,
       "passed": true
     },
     {
       "url": "https://login-secure.xyz/verify-account",
       "sklearn_prediction": 1,
       "onnx_prediction": 1,
-      "sklearn_phishing_probability": 1.0,
+      "sklearn_phishing_probability": 0.9999999920154975,
       "onnx_phishing_probability": 1.0,
-      "difference": 0.0,
+      "difference": 7.984502503610713e-09,
       "passed": true
     },
     {
       "url": "http://192.168.1.10/login",
       "sklearn_prediction": 1,
       "onnx_prediction": 1,
-      "sklearn_phishing_probability": 1.0,
+      "sklearn_phishing_probability": 0.99999998594055,
       "onnx_phishing_probability": 1.0,
-      "difference": 0.0,
+      "difference": 1.4059450048620192e-08,
+      "passed": true
+    },
+    {
+      "url": "https://verify-account.top",
+      "sklearn_prediction": 1,
+      "onnx_prediction": 1,
+      "sklearn_phishing_probability": 0.9998183161920503,
+      "onnx_phishing_probability": 0.9998183250427246,
+      "difference": 8.850674304561323e-09,
+      "passed": true
+    },
+    {
+      "url": "https://secure-update.tk:8080/login",
+      "sklearn_prediction": 1,
+      "onnx_prediction": 1,
+      "sklearn_phishing_probability": 0.9999986847666712,
+      "onnx_phishing_probability": 0.9999986886978149,
+      "difference": 3.9311437438627195e-09,
       "passed": true
     }
   ]

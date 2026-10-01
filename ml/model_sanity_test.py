@@ -21,16 +21,24 @@ from feature_extraction import extract_features, FEATURE_NAMES
 MODEL_PATH = BASE_DIR / "phishshield_model.pkl"
 
 SANITY_CASES = [
-    # Legitimate domains (expected class 0)
-    {"url": "https://google.com", "expected_category": "Legitimate", "expected_class": 0},
-    {"url": "https://www.google.com", "expected_category": "Legitimate", "expected_class": 0},
-    {"url": "https://example.com", "expected_category": "Legitimate", "expected_class": 0},
-    {"url": "https://www.example.com", "expected_category": "Legitimate", "expected_class": 0},
-    {"url": "https://google.co.uk", "expected_category": "Legitimate", "expected_class": 0},
-    {"url": "https://bbc.co.uk", "expected_category": "Legitimate", "expected_class": 0},
-    # Phishing / suspicious URLs (expected class 1)
+    # Legitimate URLs (expected class 0)
+    {"url": "https://google.com", "expected_category": "Legitimate (Apex)", "expected_class": 0},
+    {"url": "https://www.google.com", "expected_category": "Legitimate (WWW)", "expected_class": 0},
+    {"url": "https://example.com", "expected_category": "Legitimate (Apex)", "expected_class": 0},
+    {"url": "https://www.example.com", "expected_category": "Legitimate (WWW)", "expected_class": 0},
+    {"url": "https://google.co.uk", "expected_category": "Legitimate (Multi-TLD)", "expected_class": 0},
+    {"url": "https://bbc.co.uk", "expected_category": "Legitimate (Multi-TLD)", "expected_class": 0},
+    {"url": "https://github.com/sunandabandi/phishshield", "expected_category": "Legitimate (GitHub)", "expected_class": 0},
+    {"url": "https://en.wikipedia.org/wiki/Phishing", "expected_category": "Legitimate (Wikipedia)", "expected_class": 0},
+    {"url": "https://internshala.com/student/dashboard?utm_source=eoi_student_dashboard&utm_medium=email&utm_campaign=student_dashboard", "expected_category": "Legitimate (Portal Tracking)", "expected_class": 0},
+    {"url": "https://www.linkedin.com/comm/jobs/view/1234567890?trackingId=abcdef&refId=12345&midToken=AQE&trk=eml-job-alert", "expected_category": "Legitimate (Job Alert)", "expected_class": 0},
+    {"url": "https://click.mail.coursera.org/?qs=9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b", "expected_category": "Legitimate (Email Tracking)", "expected_class": 0},
+    {"url": "https://substack.com/redirect/123456?r=abcdef&utm_medium=email", "expected_category": "Legitimate (Redirect)", "expected_class": 0},
+    # Phishing / Suspicious URLs (expected class 1)
     {"url": "https://login-secure.xyz/verify-account", "expected_category": "Phishing / Suspicious", "expected_class": 1},
     {"url": "http://192.168.1.10/login", "expected_category": "Phishing / Suspicious", "expected_class": 1},
+    {"url": "https://verify-account.top", "expected_category": "Phishing / Suspicious", "expected_class": 1},
+    {"url": "https://secure-update.tk:8080/login", "expected_category": "Phishing / Suspicious", "expected_class": 1},
 ]
 
 
